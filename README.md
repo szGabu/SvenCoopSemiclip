@@ -1,3 +1,29 @@
+# ⚠️ Not working for Sven Co-op 5.26
+
+Newer version means broken signatures which is expected. Unfortunately, on a surprising turns of events, the developers removed DWARF information from the Linux binaries making it a gargantuan task to find the new signatures. It's gonna take a long time to find the new signatures even if it's possible at all, so this plugin will remain non-functional for the time being.
+
+So, what are the next steps? I don't really have a lot of options but the following:
+
+- The Sven Co-op developers restoring DWARF information. (unlikely, but even if they did it the ShouldBypassEntity() function may not exist in the code anymore)
+    - A new third party module providing access to these functions. (Also unlikely and prone to breaking since the devs will not care about any sort of modding unless it relies directly on AS)
+- Go back to the groupinfo method.
+    - Is it working in 5.26?
+    - A complete rework is needed. (Compared to the original AS script)
+    - Would still like to see how to fix the unhearable sounds.
+- Using the new iuser4 method
+    - An initial prototype I made revealed the feature doesn't work as reported in the patch notes, clients try to pass through each other but they are pushed away by the native unstuck feature of the game.
+    - Will probably be enough assuming it's working?
+    - Assuming it's working, it will provide me less flexibility to work on, making the plugin more complex if I wanted to implement all the features I had in the -dev build of the plugin.
+- Painstakingly keep using Ghidra to try to find the new sigs.
+    - I'm using an older server binary to try to find and match patterns in the decompiled code. It's what I've been doing.
+    - Unfortunately, I don't really have too much free time to keep slamming my head in my desk.
+
+You're free to use the code of this plugin for any other project, I just ask for credit where it's due. 
+
+Original README.md below.
+
+---
+
 # Sven Co-op Semiclip
 
 Sven Co-op Semiclip is an AMXX plugin [that provides exactly what it says](https://tvtropes.org/pmwiki/pmwiki.php/Main/ExactlyWhatItSaysOnTheTin). This new version of Semiclip plugin works after all updates broke the previous methods.
