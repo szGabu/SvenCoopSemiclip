@@ -5,8 +5,8 @@
 #include <hamsandwich>
 
 #define PLUGIN_NAME             "Sven Co-op Semiclip"
-#define PLUGIN_VERSION          "1.3-23w05b"
-#define PLUGIN_AUTHOR           "gabuch2"
+#define PLUGIN_VERSION          "1.3-25w3a"
+#define PLUGIN_AUTHOR           "szGabu"
 
 #define ENSURE_TASK_ID          22222
 
@@ -252,7 +252,8 @@ public OrpheuHookReturn:SC_ShouldBypassEntityPre(hPtr, hPhys)
                 if(!ArePlayersAllied(iClient, iOther))
                     return OrpheuIgnored;
 
-                if(!(pev(iOther, pev_flags) & FL_DORMANT == 0) && !(pev(iOther, pev_movetype) & MOVETYPE_FLY == 0) )
+                
+                if((pev(iOther, pev_flags) & FL_DORMANT) > 0 || pev(iOther, pev_movetype) == MOVETYPE_FLY)
                 {
                     // MOVETYPE_FLY refers to people being in ladders while FL_DORMANT provides support 
                     // for my Sven Co-op Nextmapper & Anti-Rush plugin
@@ -280,9 +281,12 @@ public OrpheuHookReturn:SC_ShouldBypassEntityPre(hPtr, hPhys)
 
 public AddToFullPack_Post(hEntState, iEnt, iEdictEnt, iEdictHost, iHostFlags, iPlayer, pSet) 
 {	
-    if(iEdictHost != iEdictEnt && is_user_valid(iEdictEnt) && g_bUserFullyConnected[iEdictEnt] && g_bUserFullyConnected[iEdictHost])
+    if(is_user_alive(iEdictHost) && iEdictHost != iEdictEnt && is_user_valid(iEdictEnt) && g_bUserFullyConnected[iEdictEnt] && g_bUserFullyConnected[iEdictHost])
     {
         if(!ArePlayersAllied(iEdictHost, iEdictEnt))
+            return FMRES_IGNORED;
+
+        if((pev(iEdictEnt, pev_flags) & FL_DORMANT) > 0 || pev(iEdictEnt, pev_movetype) == MOVETYPE_FLY)
             return FMRES_IGNORED;
 
         pev(iEdictHost, pev_velocity, g_fClientVelocity);
