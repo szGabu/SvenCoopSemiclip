@@ -1,0 +1,46 @@
+name: Build AMX Mod X Plugin
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download AMX Mod X base
+        run: |
+          mkdir -p temp_addons/amxmodx
+          curl -L https://www.amxmodx.org/amxxdrop/1.9/amxmodx-1.9.0-git5294-base-linux.tar.gz | tar xz -C temp_addons/amxmodx --strip-components=1
+
+      - name: Download Orpheu files
+        run: |
+          mkdir -p temp_addons/amxmodx
+          curl -L https://github.com/Arkshine/Orpheu/releases/download/2.6.3/orpheu-files-2.6.3.zip -o temp_addons/orpheu-files.zip
+          unzip temp_addons/orpheu-files.zip -d temp_addons/amxmodx
+
+      - name: Copy svencoop_semiclip.sma
+        run: cp addons/amxmodx/scripting/svencoop_semiclip.sma temp_addons/amxmodx/scripting/
+
+      - name: Execute amxxpc
+        run: cd temp_addons/amxmodx/scripting && amxxpc svencoop_semiclip.sma
+
+      - name: Move resulting plugin
+        run: mv temp_addons/amxmodx/scripting/svencoop_semiclip.amxx addons/amxmodx/plugins/
+
+      - name: Zip addons folder
+        run: zip -r addons.zip addons/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: amxmodx-plugins
+          path: addons.zip
