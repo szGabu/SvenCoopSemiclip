@@ -9,8 +9,10 @@
 #include <fakemeta>
 #include <hamsandwich>
 
+#pragma semicolon 1
+
 #define PLUGIN_NAME                 "Sven Co-op Semiclip"
-#define PLUGIN_VERSION              "1.3-25w4a"
+#define PLUGIN_VERSION              "1.3.0-25w17a"
 #define PLUGIN_AUTHOR               "szGabu"
 
 #define CLOCK_TASKID                22222
@@ -137,7 +139,7 @@ public Task_Clock()
 {
     for(new iClient=1; iClient <= MaxClients; iClient++)
     {
-        if(is_user_connected(iClient) && pev_valid(iClient) == 2)
+        if(is_user_connected(iClient) && pev_valid(iClient))
         {
             g_bClientValid[iClient] = true;
             g_iClientFlags[iClient] = pev(iClient, pev_flags);
@@ -259,7 +261,7 @@ public OrpheuHookReturn:EntityPositionPre(iOther)
     // pull requests are open
     for(new iClient=1; iClient <= MaxClients; iClient++)
     {
-        if(is_user_alive(iClient) && pev_valid(iClient) == 2)
+        if(is_user_alive(iClient) && pev_valid(iClient))
         {
             // we need to save the player's original groupinfo 
             // in cases where a custom map might be also manipulating it
@@ -277,7 +279,7 @@ public OrpheuHookReturn:EntityPositionPost(iOther)
     // ditto
     for(new iClient=1; iClient <= MaxClients; iClient++)
     {
-        if(is_user_alive(iClient) && pev_valid(iClient) == 2)
+        if(is_user_alive(iClient) && pev_valid(iClient))
         {
             set_pev(iClient, pev_groupinfo, g_iOriginalGroupInfo[iClient]);
             g_iOriginalGroupInfo[iClient] = -1;
