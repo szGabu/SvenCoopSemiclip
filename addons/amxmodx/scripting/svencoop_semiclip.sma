@@ -1,23 +1,36 @@
 #include <amxmodx>
 
-#if AMXX_VERSION_NUM < 183
-#assert "AMX Mod X versions 1.8.2 and below are not supported."
-#endif
-
 #include <orpheu>
 #include <orpheu_advanced>
 #include <fakemeta>
 #include <hamsandwich>
 
-#pragma semicolon 1
+#if AMXX_VERSION_NUM < 183
+// ** COMPILER OPTIONS **
+
+// Adjust as needed
+// Enable if you want to use an alternative Ham entry to trick AMXX into hooking the desired virtual constant
+// You must provide an UNUSED Ham entry, and it must be properly defined in your hamdata.ini file
+// This compiler option has no effect on newer AMXX version (1.9+) due to these virtual constants actually existing
+#define HAM_SWAP_TRICK   			true
+
+// Ham defines, change as needed.
+#define Ham_SC_GetClassification    Ham_TS_ShouldCollide
+#define Ham_SC_Player_IsConnected   Ham_TS_OnFreeEntPrivateData
+#endif
+
+// ** COMPILER OPTIONS END HERE **
+
+#pragma dynamic                     32768
+#pragma semicolon                   1
 
 #define PLUGIN_NAME                 "Sven Co-op Semiclip"
-#define PLUGIN_VERSION              "1.3.0-25w17a"
+#define PLUGIN_VERSION              "1.3.0-25w23a"
 #define PLUGIN_AUTHOR               "szGabu"
 
 #define CLOCK_TASKID                22222
 
-#define CALLIBRATION                2 //do not change this unless you know what are you doing
+#define CALLIBRATION                1 //do not change this unless you know what are you doing
 
 #define SC_CLASS_NONE               0
 #define SC_CLASS_MACHINE            1
@@ -40,40 +53,25 @@
 #define SC_CLASS_TEAM_C             18
 #define SC_CLASS_TEAM_D             19
 
-#pragma dynamic                     32768
-#pragma semicolon                   1
+#if AMXX_VERSION_NUM < 183
+#define MAX_PLAYERS                 32
+#define MaxClients                  get_maxplayers()
+#define __BINARY__                  "svencoop_semiclip.amxx"
+#define get_pcvar_bool(%1) 	        (get_pcvar_num(%1) == 1)
+#endif
 
-#define IsValidUserIndex(%1) (1 <= (%1) <= MaxClients)
+#define IsValidUserIndex(%1)        (1 <= (%1) <= MaxClients)
 
 //functions
 new OrpheuFunction:g_hShouldBypassEntityFunction, OrpheuFunction:g_hPlayerMoveFunction, OrpheuFunction:g_hTestEntityPositionFunction;
 new OrpheuHook:g_hookShouldBypassEntityPre, OrpheuHook:g_hookTestEntityPositionPre, OrpheuHook:g_hookTestEntityPositionPost;
-new g_cvarEnabled, g_cvarCacheSpeed, g_cvarPassthroughSpeed;
+new g_cvarEnabled, g_cvarPassthroughSpeed;
 
 //declare these as globals, to avoid creating new variables in performance critical functions
+new bool:g_bValidUser[MAX_PLAYERS+1] = { false, ... };
 new g_iOriginalGroupInfo[MAX_PLAYERS+1] = { -1, ... };
-new bool:g_bClientValid[MAX_PLAYERS+1] = { false, ...};
-new bool:g_bClientAlive[MAX_PLAYERS+1] = { false, ...};
-new g_iClientButton[MAX_PLAYERS+1] = { 0, ... };
-new g_iClientFlags[MAX_PLAYERS+1] = { 0, ... };
-new g_iClientMoveType[MAX_PLAYERS+1] = { 0, ... };
-new g_iClientClassification[MAX_PLAYERS+1] = { SC_CLASS_PLAYER, ... };
-
-new Float:g_fClientAbsMin[MAX_PLAYERS+1][3] = { 
-    {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}
-};
-
-new Float:g_fClientAbsMax[MAX_PLAYERS+1][3] = { 
-    {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}
-};
-
-new Float:g_fClientVelocity[MAX_PLAYERS+1][3] = { 
-    {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}
-};
-
 new g_iPluginFlags;
 
-new Float:g_fCacheSpeed;
 new Float:g_fPassthroughSpeed;
 
 //this should work?
@@ -84,7 +82,6 @@ public plugin_init()
     register_plugin(PLUGIN_NAME, PLUGIN_VERSION, PLUGIN_AUTHOR);
 
     g_cvarEnabled = register_cvar("amx_semiclip_enabled", "1");
-    g_cvarCacheSpeed = register_cvar("amx_semiclip_cache_speed", "0.1");
     g_cvarPassthroughSpeed = register_cvar("amx_semiclip_passthrough_speed", "500.0");
     register_cvar("amx_semiclip_version", PLUGIN_VERSION, FCVAR_SERVER);
 
@@ -93,12 +90,12 @@ public plugin_init()
 
 public plugin_end()
 {
+    if(g_iPluginFlags & AMX_FLAG_DEBUG)
+        server_print("[DEBUG] %s.amxx::plugin_end() - Called", __BINARY__);
+
     if(task_exists(CLOCK_TASKID))
         remove_task(CLOCK_TASKID);
-
-    for(new iClient=1; iClient <= MaxClients; iClient++)
-        g_bClientValid[iClient] = false;
-
+        
     if(g_hookShouldBypassEntityPre)
         OrpheuUnregisterHook(g_hookShouldBypassEntityPre);
 
@@ -107,6 +104,9 @@ public plugin_end()
 
     if(g_hookTestEntityPositionPost)
         OrpheuUnregisterHook(g_hookTestEntityPositionPost);
+
+    if(g_iPluginFlags & AMX_FLAG_DEBUG)
+        server_print("[DEBUG] %s.amxx::plugin_end() - Unhooked", __BINARY__);
 }
 
 public plugin_cfg()
@@ -129,48 +129,17 @@ public plugin_cfg()
         register_forward(FM_PlayerPostThink, "Player_PostThink");
 
         g_fPassthroughSpeed = get_pcvar_float(g_cvarPassthroughSpeed);
-        g_fCacheSpeed = get_pcvar_float(g_cvarCacheSpeed);
-
-        set_task(g_fCacheSpeed, "Task_Clock", CLOCK_TASKID, _, _, "b");
     }
 }
 
-public Task_Clock()
+public client_disconnect(iClient)
 {
-    for(new iClient=1; iClient <= MaxClients; iClient++)
-    {
-        if(is_user_connected(iClient) && pev_valid(iClient))
-        {
-            g_bClientValid[iClient] = true;
-            g_iClientFlags[iClient] = pev(iClient, pev_flags);
-            g_iClientButton[iClient] = pev(iClient, pev_button);
-            //Ham (Or maybe SC) incorrectly asks for a second parameter, it doesn't matter the value you pass
-            g_iClientClassification[iClient] = ExecuteHam(Ham_SC_GetClassification, iClient, SC_CLASS_NONE);
-            g_bClientAlive[iClient] = is_user_alive(iClient) == 1;
-            g_iClientMoveType[iClient] = pev(iClient, pev_movetype);
-            pev(iClient, pev_absmin, g_fClientAbsMin[iClient]);
-            pev(iClient, pev_absmax, g_fClientAbsMax[iClient]);
-            pev(iClient, pev_velocity, g_fClientVelocity[iClient]);
-        }
-        else
-        {
-            g_bClientValid[iClient] = false;
-            g_iClientFlags[iClient] = 0;
-            g_iClientButton[iClient] = 0;
-            g_iClientClassification[iClient] = 0;
-            g_bClientAlive[iClient] = false;
-            g_iClientMoveType[iClient] = 0;
-            g_fClientAbsMin[iClient][0] = 0.0;
-            g_fClientAbsMin[iClient][1] = 0.0;
-            g_fClientAbsMin[iClient][2] = 0.0;
-            g_fClientAbsMax[iClient][0] = 0.0;
-            g_fClientAbsMax[iClient][1] = 0.0;
-            g_fClientAbsMax[iClient][2] = 0.0;
-            g_fClientVelocity[iClient][0] = 0.0;
-            g_fClientVelocity[iClient][1] = 0.0;
-            g_fClientVelocity[iClient][2] = 0.0;
-        }
-    }
+    g_bValidUser[iClient] = false;
+}
+
+public client_putinserver(iClient)
+{
+    g_bValidUser[iClient] = true;
 }
 
 public Player_PreThink(iClient)
@@ -178,18 +147,29 @@ public Player_PreThink(iClient)
     // we need to make the player not solid on a player prethink to fix a bug 
     // where a player isn't able to stand up if they're crouched inside another player
     // unfortunately, this is needed, there's no way around it
-    if(g_bClientValid[iClient] && g_bClientAlive[iClient])
+    if(g_bValidUser[iClient] && is_user_connected2(iClient) && is_user_alive(iClient))
     {
-        if(g_iClientFlags[iClient] & FL_DUCKING && ((g_iClientButton[iClient] & IN_DUCK) == 0)/*  && pev(id, pev_oldbuttons) & IN_DUCK */)
+        new iFlags = pev(iClient, pev_flags);
+        new iClientButton = pev(iClient, pev_button);
+        if(iFlags & FL_DUCKING && ((iClientButton & IN_DUCK) == 0)/*  && pev(id, pev_oldbuttons) & IN_DUCK */)
         {
             for(new iOther=1; iOther <= MaxClients; iOther++)
             {
-                if(!g_bClientValid[iOther] || iClient == iOther || !g_bClientAlive[iOther])
+                if(iClient == iOther || !g_bValidUser[iOther] || !is_user_connected2(iOther) || !is_user_alive(iOther))
                     continue;
 
                 if(IsColliding(iClient, iOther))
                 {
-                    if((g_fClientAbsMin[iClient][2]+CALLIBRATION >= g_fClientAbsMax[iOther][2] && g_fClientVelocity[iClient][2] < g_fPassthroughSpeed) || (g_fClientAbsMin[iOther][2]+CALLIBRATION >= g_fClientAbsMax[iClient][2]))
+                    new Float:fClientAbsMin[3], Float:fClientAbsMax[3];
+                    new Float:fOtherAbsMin[3], Float:fOtherAbsMax[3];
+                    new Float:fClientVelocity[3];
+                    pev(iClient, pev_velocity, fClientVelocity);
+                    pev(iClient, pev_absmin, fClientAbsMin);
+                    pev(iClient, pev_absmax, fClientAbsMax);
+                    pev(iOther, pev_absmin, fOtherAbsMin);
+                    pev(iOther, pev_absmax, fOtherAbsMax);
+
+                    if((fClientAbsMin[2]+CALLIBRATION >= fOtherAbsMax[2] && fClientVelocity[2] < g_fPassthroughSpeed) || (fOtherAbsMin[2]+CALLIBRATION >= fClientAbsMax[2]))
                         continue;
                     else
                         set_pev(iOther, pev_solid, SOLID_NOT);
@@ -202,11 +182,11 @@ public Player_PreThink(iClient)
 public Player_PostThink(iClient)
 {
     // continuation of previous function
-    if(g_bClientValid[iClient] && g_bClientAlive[iClient])
+    if(g_bValidUser[iClient] && is_user_connected2(iClient) && is_user_alive(iClient))
     {
-        for(new iOther=1;iOther <= MaxClients;iOther++)
+        for(new iOther=1; iOther <= MaxClients;iOther++)
         {
-            if(!g_bClientValid[iOther] || iClient == iOther || !g_bClientAlive[iOther])
+            if(iClient == iOther || !g_bValidUser[iOther] || !is_user_connected2(iOther) || !is_user_alive(iOther))
                 continue;
 
             if(pev(iOther, pev_solid) == SOLID_NOT)
@@ -218,19 +198,24 @@ public Player_PostThink(iClient)
 public OrpheuHookReturn:SC_ShouldBypassEntityPre(hPtr, hPhys)
 {
     new iOther = OrpheuGetParamStructMember(2, "player"); //2 = hPhys
-    if(IsValidUserIndex(iOther) && g_bClientValid[iOther])
+    if(IsValidUserIndex(iOther) && g_bValidUser[iOther] && is_user_connected2(iOther))
     {
         new OrpheuStruct:hPpMove = OrpheuGetStructFromAddress(OrpheuStructPlayerMove, OrpheuCall(g_hPlayerMoveFunction));
         if(hPpMove != InvalidOrpheuStruct)
         {
             new iClient = OrpheuGetStructMember(hPpMove, "player_index") + 1;
         
-            if(IsValidUserIndex(iClient) && g_bClientValid[iClient] && ArePlayersAllied(iClient, iOther))
+            if(IsValidUserIndex(iClient) && g_bValidUser[iClient] && is_user_connected2(iClient) && ArePlayersAllied(iClient, iOther))
             {
-                if((g_iClientFlags[iOther] & FL_DORMANT) > 0 || 
-                    g_iClientMoveType[iOther] == MOVETYPE_FLY || 
-                    (g_iClientFlags[iClient] & FL_DORMANT) > 0 || 
-                    g_iClientMoveType[iClient] == MOVETYPE_FLY)
+                new iClientFlags = pev(iClient, pev_flags);
+                new iOtherFlags = pev(iOther, pev_flags);
+                new iClientMoveType = pev(iClient, pev_movetype);
+                new iOtherMoveType = pev(iOther, pev_movetype);
+
+                if((iOtherFlags & FL_DORMANT) > 0 || 
+                    iOtherMoveType == MOVETYPE_FLY || 
+                    (iClientFlags & FL_DORMANT) > 0 || 
+                    iClientMoveType == MOVETYPE_FLY)
                 {
                     // MOVETYPE_FLY refers to people being in ladders while FL_DORMANT provides support 
                     // for my Sven Co-op Nextmapper & Anti-Rush plugin
@@ -238,9 +223,18 @@ public OrpheuHookReturn:SC_ShouldBypassEntityPre(hPtr, hPhys)
                     return OrpheuSupercede;
                 }
 
-                if((g_fClientAbsMin[iClient][2]+CALLIBRATION >= g_fClientAbsMax[iOther][2] && 
-                    g_fClientVelocity[iOther][2] < g_fPassthroughSpeed) || 
-                    (g_fClientAbsMin[iOther][2]+CALLIBRATION >= g_fClientAbsMax[iClient][2]))
+                new Float:fClientAbsMin[3], Float:fClientAbsMax[3];
+                new Float:fOtherAbsMin[3], Float:fOtherAbsMax[3];
+                new Float:fOtherVelocity[3];
+                pev(iClient, pev_absmin, fClientAbsMin);
+                pev(iClient, pev_absmax, fClientAbsMax);
+                pev(iOther, pev_velocity, fOtherVelocity);
+                pev(iOther, pev_absmin, fOtherAbsMin);
+                pev(iOther, pev_absmax, fOtherAbsMax);
+
+                if((fClientAbsMin[2]+CALLIBRATION >= fOtherAbsMax[2] && 
+                    fOtherVelocity[2] < g_fPassthroughSpeed) || 
+                    (fOtherAbsMin[2]+CALLIBRATION >= fClientAbsMax[2]))
                     return OrpheuIgnored;
 
                 OrpheuSetReturn(true);
@@ -261,7 +255,7 @@ public OrpheuHookReturn:EntityPositionPre(iOther)
     // pull requests are open
     for(new iClient=1; iClient <= MaxClients; iClient++)
     {
-        if(is_user_alive(iClient) && pev_valid(iClient))
+        if(g_bValidUser[iClient] && is_user_connected2(iClient) && is_user_alive(iClient))
         {
             // we need to save the player's original groupinfo 
             // in cases where a custom map might be also manipulating it
@@ -279,7 +273,7 @@ public OrpheuHookReturn:EntityPositionPost(iOther)
     // ditto
     for(new iClient=1; iClient <= MaxClients; iClient++)
     {
-        if(is_user_alive(iClient) && pev_valid(iClient))
+        if(g_bValidUser[iClient] && is_user_connected2(iClient) && is_user_alive(iClient))
         {
             set_pev(iClient, pev_groupinfo, g_iOriginalGroupInfo[iClient]);
             g_iOriginalGroupInfo[iClient] = -1;
@@ -294,21 +288,37 @@ public AddToFullPack_Post(hEntState, iEnt, iEdictEnt, iEdictHost, iHostFlags, iP
     if(iEdictHost != iEdictEnt && 
         IsValidUserIndex(iEdictEnt) &&
         IsValidUserIndex(iEdictHost) &&
-        g_bClientValid[iEdictEnt] && 
-        g_bClientValid[iEdictHost] && 
-        g_bClientAlive[iEdictHost] &&
-        g_bClientAlive[iEdictEnt] && 
+        g_bValidUser[iEdictEnt] &&
+        g_bValidUser[iEdictHost] &&
+        is_user_connected2(iEdictEnt) && 
+        is_user_connected2(iEdictHost) && 
+        is_user_alive(iEdictHost) &&
+        is_user_alive(iEdictEnt) && 
         ArePlayersAllied(iEdictHost, iEdictEnt))
     {
-        if((g_iClientFlags[iEdictEnt] & FL_DORMANT) > 0 || 
-            g_iClientMoveType[iEdictEnt] == MOVETYPE_FLY || 
-            (g_iClientFlags[iEdictHost] & FL_DORMANT) > 0 || 
-            g_iClientMoveType[iEdictHost] == MOVETYPE_FLY)
+        new iClientFlags = pev(iEdictHost, pev_flags);
+        new iOtherFlags = pev(iEdictEnt, pev_flags);
+        new iClientMoveType = pev(iEdictHost, pev_movetype);
+        new iOtherMoveType = pev(iEdictEnt, pev_movetype);
+        
+        if((iOtherFlags & FL_DORMANT) > 0 || 
+            iOtherMoveType == MOVETYPE_FLY || 
+            (iClientFlags & FL_DORMANT) > 0 || 
+            iClientMoveType == MOVETYPE_FLY)
             return FMRES_IGNORED;
 
-        if((g_fClientAbsMin[iEdictHost][2]+CALLIBRATION >= g_fClientAbsMax[iEdictEnt][2] && 
-            g_fClientVelocity[iEdictHost][2] < g_fPassthroughSpeed) || 
-            (g_fClientAbsMin[iEdictEnt][2]+CALLIBRATION >= g_fClientAbsMax[iEdictHost][2]))
+        new Float:fClientAbsMin[3], Float:fClientAbsMax[3];
+        new Float:fOtherAbsMin[3], Float:fOtherAbsMax[3];
+        new Float:fClientVelocity[3];
+        pev(iEdictHost, pev_velocity, fClientVelocity);
+        pev(iEdictHost, pev_absmin, fClientAbsMin);
+        pev(iEdictHost, pev_absmax, fClientAbsMax);
+        pev(iEdictEnt, pev_absmin, fOtherAbsMin);
+        pev(iEdictEnt, pev_absmax, fOtherAbsMax);
+
+        if((fClientAbsMin[2]+CALLIBRATION >= fOtherAbsMax[2] && 
+            fClientVelocity[2] < g_fPassthroughSpeed) || 
+            (fOtherAbsMin[2]+CALLIBRATION >= fClientAbsMax[2]))
             set_es(hEntState, ES_Solid, 1);
         else
             set_es(hEntState, ES_Solid, 0);
@@ -319,27 +329,56 @@ public AddToFullPack_Post(hEntState, iEnt, iEdictEnt, iEdictHost, iHostFlags, iP
     return FMRES_IGNORED;
 }
 
-stock IsColliding(iThis, iOther)
+stock bool:IsColliding(iThis, iOther)
 {
-    //thanks xPaw
-    if(g_fClientAbsMin[iThis][0] > g_fClientAbsMax[iOther][0] ||
-        g_fClientAbsMin[iThis][1] > g_fClientAbsMax[iOther][1] ||
-        g_fClientAbsMin[iThis][2] > g_fClientAbsMax[iOther][2] ||
-        g_fClientAbsMax[iThis][0] < g_fClientAbsMin[iOther][0] ||
-        g_fClientAbsMax[iThis][1] < g_fClientAbsMin[iOther][1] ||
-        g_fClientAbsMax[iThis][2] < g_fClientAbsMin[iOther][2])
-        return 0;
-    
-    return 1;
+    new Float:cMin[3], Float:cMax[3], Float:oMin[3], Float:oMax[3];
+    pev(iThis, pev_absmin, cMin);
+    pev(iThis, pev_absmax, cMax);
+    pev(iOther, pev_absmin, oMin);
+    pev(iOther, pev_absmax, oMax);
+
+    // if *any* axis doesn’t overlap, there’s no collision
+    if (cMax[0] < oMin[0] || cMin[0] > oMax[0]) return false; // x‐axis gap
+    if (cMax[1] < oMin[1] || cMin[1] > oMax[1]) return false; // y‐axis
+    if (cMax[2] < oMin[2] || cMin[2] > oMax[2]) return false; // z‐axis
+
+    return true;  // all axes overlap
 }
 
-stock ArePlayersAllied(const iClient1, const iClient2)
+stock bool:ArePlayersAllied(const iClient1, const iClient2)
 {
-    return g_iClientClassification[iClient1] == g_iClientClassification[iClient2];
+    #if AMXX_VERSION_NUM < 183
+    // sadly Ham_SC_GetClassification is only available in later AMXX versions
+    // for this case we can only return true and no support for bm_sts or similar
+    #pragma unused iClient1
+    #pragma unused iClient2
+    return true;
+    #else
+    if(is_user_connected2(iClient1) && is_user_connected2(iClient2))
+    {
+        //Ham (Or maybe SC) incorrectly asks for a second parameter, it doesn't matter the value you pass
+        return ExecuteHam(Ham_SC_GetClassification, iClient1, SC_CLASS_NONE) == ExecuteHam(Ham_SC_GetClassification, iClient2, SC_CLASS_NONE);
+    }
+    else
+        return false;
+    #endif
 }
 
 stock PlayerIdToBit(const iClient)
 {
     //thanks anggaranothing
-	return (1<<( iClient&31));
+	return ( 1<<( iClient & 31 ) );
+}
+
+stock bool:is_user_connected2(iClient)
+{
+    #if AMXX_VERSION_NUM < 183 
+    //ditto
+    return is_user_connected(iClient) == 1;
+    #else
+    if(IsValidUserIndex(iClient) && pev_valid(iClient) == 2)
+        return ExecuteHam(Ham_SC_Player_IsConnected, iClient) == 1;
+    else
+        return false;
+    #endif
 }
